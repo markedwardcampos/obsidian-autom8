@@ -90,6 +90,11 @@ export interface RotationPlan {
   moved: { date: string; month: string; text: string }[];
 }
 
+/** Drop trailing blank lines (keeps trailing spaces on the last content line). */
+export function trimBlankTail(s: string): string {
+  return s.replace(/(?:\r?\n[ \t]*)+$/, "");
+}
+
 /** Decide what moves. Throws if the old sections are not a contiguous tail. */
 export function planRotation(text: string, keepDays: number): RotationPlan {
   const secs = parseDaySections(text);
@@ -109,7 +114,7 @@ export function planRotation(text: string, keepDays: number): RotationPlan {
   const moved = secs.slice(firstOld).map((s) => ({
     date: s.date,
     month: s.date.slice(0, 7),
-    text: text.slice(s.start, s.end).replace(/\s+$/, ""),
+    text: trimBlankTail(text.slice(s.start, s.end)),
   }));
   return { keptDates, cut, head: text.slice(0, cut), tail: text.slice(cut), moved };
 }
@@ -356,7 +361,7 @@ export async function rotateLogNote(
         warnings.push(`nothing older than ${keepDays} dates, but the note is ${result.bytes_before} B > max_bytes ${maxBytes}; lower keep_days`);
       return result;
     }
-    const newLive = plan.head.replace(/\s+$/, "") + "\n";
+    const newLive = trimBlankTail(plan.head) + "\n";
     result.bytes_after = bytes(newLive);
     if (result.bytes_after > maxBytes)
       warnings.push(`live note would still be ${result.bytes_after} B > max_bytes ${maxBytes}; lower keep_days`);
@@ -413,14 +418,14 @@ export async function rotateLogNote(
 
     // ---- 2) cut the tail. Re-read: entries added at the top meanwhile must survive.
     const current = await readText(liveAbs);
-    const tailTrim = plan.tail.replace(/\s+$/, "");
-    const curTrim = current.replace(/\s+$/, "");
+    const tailTrim = trimBlankTail(plan.tail);
+    const curTrim = trimBlankTail(current);
     if (!curTrim.endsWith(tailTrim)) {
       throw new Error(
         "rotate_log_note: the live note changed below the cut point after planning; archives are written and verified, live note NOT touched. Re-run to finish.",
       );
     }
-    const cutLive = curTrim.slice(0, curTrim.length - tailTrim.length).replace(/\s+$/, "") + "\n";
+    const cutLive = trimBlankTail(curTrim.slice(0, curTrim.length - tailTrim.length)) + "\n";
     await writeTextAtomic(liveAbs, cutLive);
     const after = await readText(liveAbs);
     const movedDates = new Set(plan.moved.map((m) => m.date));
