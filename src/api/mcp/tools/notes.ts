@@ -23,6 +23,7 @@ import {
   getNoteWordcountSchema,
   getNoteWordcount,
 } from "../../../app/notes.js";
+import { rotateLogNoteSchema, rotateLogNote } from "../../../app/rotate.js";
 
 export function registerTools(server: McpServer, executor: ObsidianExecutor): void {
   server.registerTool(
@@ -121,5 +122,20 @@ export function registerTools(server: McpServer, executor: ObsidianExecutor): vo
       inputSchema: getNoteWordcountSchema.shape,
     },
     async (input) => text(await getNoteWordcount(executor, input)),
+  );
+
+  server.registerTool(
+    "rotate_log_note",
+    {
+      description:
+        "Rotate a LIFO day-log note (e.g. The Bridge Log): keep the newest `keep_days` distinct dates of " +
+        "`#`/`##`/`###` YYYY-MM-DD sections (plus everything above the first day header), move older sections " +
+        "into `<archive_folder>/YYYY-MM.md` monthly notes (newest first, above existing archived days; created with " +
+        "frontmatter if missing) and link them in the archive index. Archives are written and verified before the " +
+        "live note is cut; any failure leaves the live note untouched. File I/O happens in the server, so notes of " +
+        "any size work. dry_run defaults to true. Returns sections moved, bytes before/after and verification.",
+      inputSchema: rotateLogNoteSchema.shape,
+    },
+    async (input) => text(await rotateLogNote(executor, input)),
   );
 }

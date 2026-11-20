@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import type { ObsidianExecutor } from "./executor.js";
 import { buildFrontmatter } from "./frontmatter.js";
+import { readText, vaultFile, writeTextAtomic } from "./vaultfs.js";
 
 export const readNoteSchema = z.object({
   path: z.string().describe("Exact vault-relative file path e.g. folder/note.md"),
@@ -113,10 +114,43 @@ export async function editNote(
       `edit_note: old_string matches ${occurrences} occurrences in ${input.path} — include more surrounding context to make it unique`,
     );
   }
-  await executor.run("create", {
-    path: input.path,
-    content: original.replace(input.old_string, input.new_string),
-    overwrite: true,
+  const updated = original.replace(input.old_string, () => input.new_string);
+  if (Buffer.byteLength(updated, "utf8") <= EDIT_VIA_CLI_MAX_BYTES) {
+    await executor.run("create", {
+      path: input.path,
+      content: updated,
+      overwrite: true,
+    });
+    return;
+  }
+  await editNoteViaFs(executor, input);
+}
+
+/**
+ * Notes above this size are edited on the vault filesystem instead of through
+ * `obsidian create content=<note> overwrite`: that passes the whole note as one
+ * argv string, and Linux caps one argv string at 128 KiB (MAX_ARG_STRLEN), so
+ * the CLI path fails with `spawn E2BIG`. Smaller notes keep the original path.
+ */
+export const EDIT_VIA_CLI_MAX_BYTES = 100_000;
+
+async function editNoteViaFs(
+  executor: ObsidianExecutor,
+  input: z.infer<typeof editNoteSchema>,
+): Promise<void> {
+  const abs = await vaultFile(executor, input.path);
+  await executor.enqueue(async () => {
+    // re-read the raw file under the queue so the uniqueness check and the write see the same text
+    const raw = await readText(abs);
+    const n = raw.split(input.old_string).length - 1;
+    if (n !== 1) {
+      throw new Error(
+        n === 0
+          ? `edit_note: old_string not found in ${input.path} — ensure text matches exactly (including whitespace)`
+          : `edit_note: old_string matches ${n} occurrences in ${input.path} — include more surrounding context to make it unique`,
+      );
+    }
+    await writeTextAtomic(abs, raw.replace(input.old_string, () => input.new_string));
   });
 }
 
