@@ -155,12 +155,12 @@ describe("planRotation", () => {
     expect(planRotation(text, 3).cut).toBe(-1);
   });
 
-  it("moved texts are trailing-whitespace-trimmed, newest first (note order), with a month", () => {
+  it("moved texts drop trailing blank lines but keep trailing spaces on the last content line, newest first (note order), with a month", () => {
     const text =
       day("2026-11-20") + "## 2026-11-02\nbody2  \n\n\n" + "### 2026-10-31\nbody1\n\t\n\n\n" + "# 2026-10-30\nlast";
     const plan = planRotation(text, 1);
     expect(plan.moved).toEqual([
-      { date: "2026-11-02", month: "2026-11", text: "## 2026-11-02\nbody2" },
+      { date: "2026-11-02", month: "2026-11", text: "## 2026-11-02\nbody2  " },
       { date: "2026-10-31", month: "2026-10", text: "### 2026-10-31\nbody1" },
       { date: "2026-10-30", month: "2026-10", text: "# 2026-10-30\nlast" },
     ]);
